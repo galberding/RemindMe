@@ -1,5 +1,6 @@
 package com.vishnu.remindme.ui
 
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -36,6 +37,8 @@ class MainActivity : ComponentActivity() {
                 data = Uri.parse("package:${packageName}")
             }
             startActivity(intent)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            checkFullScreenIntentPermission()
         }
 
         setContent {
@@ -44,6 +47,23 @@ class MainActivity : ComponentActivity() {
                     HomeScreen(Modifier.padding(innerPadding))
                 }
             }
+        }
+    }
+
+    /**
+     * Android 14+: the full-screen intent (alarm screen over the lock screen) needs a special
+     * app access the user may have to grant. Asked after the overlay permission so the two
+     * settings screens don't stack.
+     */
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private fun checkFullScreenIntentPermission() {
+        val manager = getSystemService(NotificationManager::class.java)
+        if (!manager.canUseFullScreenIntent()) {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                    data = Uri.parse("package:${packageName}")
+                }
+            )
         }
     }
 

@@ -374,12 +374,51 @@ fun ReminderBottomSheet(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = if (reminder == null) stringResource(R.string.add_new_reminder)
-                else stringResource(R.string.edit_reminder),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            // Header: title + actions. Kept at the top so Save stays reachable while the
+            // soft keyboard covers the lower part of the sheet.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (reminder == null) stringResource(R.string.add_new_reminder)
+                    else stringResource(R.string.edit_reminder),
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+
+                Button(
+                    onClick = {
+                        onSetAlarm(
+                            title.trim(),
+                            description?.takeIf { it.isNotBlank() },
+                            dueDateTime
+                                .atZone(ZoneId.systemDefault())
+                                .toInstant()
+                                .toEpochMilli(),
+                            recurrencePattern,
+                            if (recurrencePattern == RecurrencePattern.CUSTOM)
+                                customIntervalMillis
+                            else
+                                null
+                        )
+                    },
+                    enabled = validInput
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            }
 
             OutlinedTextField(
                 modifier = Modifier.fillMaxWidth(),
@@ -536,40 +575,7 @@ fun ReminderBottomSheet(
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 24.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.padding(end = 8.dp)
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-
-                Button(
-                    onClick = {
-                        onSetAlarm(
-                            title.trim(),
-                            description?.takeIf { it.isNotBlank() },
-                            dueDateTime
-                                .atZone(ZoneId.systemDefault())
-                                .toInstant()
-                                .toEpochMilli(),
-                            recurrencePattern,
-                            if (recurrencePattern == RecurrencePattern.CUSTOM)
-                                customIntervalMillis
-                            else
-                                null
-                        )
-                    },
-                    enabled = validInput
-                ) {
-                    Text(stringResource(R.string.save))
-                }
-            }
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
