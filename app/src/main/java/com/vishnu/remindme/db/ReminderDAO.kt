@@ -23,6 +23,12 @@ interface ReminderDAO {
     @Query("SELECT * FROM reminder_items ORDER BY dueDate DESC")
     fun getAllEntries(): Flow<List<Reminder>>
 
+    @Query("SELECT * FROM reminder_items WHERE _id = :id")
+    suspend fun getById(id: Long): Reminder?
+
+    @Query("DELETE FROM reminder_items WHERE _id = :id")
+    suspend fun deleteById(id: Long)
+
     // only to be used from the startup reciever. use #getAllEntries elsewhere!
     @Query("SELECT * FROM reminder_items ORDER BY dueDate DESC")
     fun reminders(): List<Reminder>

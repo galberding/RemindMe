@@ -26,6 +26,7 @@ class BootReceiver : BroadcastReceiver() {
                         AlarmUtils.scheduleAlarm(context, it)
                     else if (it.recurrencePattern != null)
                         AlarmUtils.rescheduleAlarm(context, it)
+                            ?.let { next -> reminderDAO.update(next) }
                 }
             }
         }

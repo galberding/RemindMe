@@ -1,13 +1,8 @@
 package com.vishnu.remindme.ui
 
-import android.media.AudioAttributes
-import android.media.Ringtone
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -55,13 +50,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.vishnu.remindme.R
 import com.vishnu.remindme.model.Reminder
-import com.vishnu.remindme.settings.SettingsRepository
+import com.vishnu.remindme.service.AlarmForegroundService
 import com.vishnu.remindme.ui.theme.RemindMeTheme
 import com.vishnu.remindme.utils.Constants
 import com.vishnu.remindme.utils.Utils
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -69,11 +68,9 @@ import java.util.Locale
 
 class AlarmActivity : ComponentActivity() {
 
-    private lateinit var ringtone: Ringtone
-    private var vibrator: Vibrator? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        showOverLockScreen()
         enableEdgeToEdge()
 
 //        val reminder = Reminder(0, "Title", "Description", System.currentTimeMillis()) // debug
@@ -82,40 +79,27 @@ class AlarmActivity : ComponentActivity() {
                 Constants.REMINDER_ITEM_KEY, Reminder::class.java
             )
         } else {
+            @Suppress("DEPRECATION")
             intent.getParcelableExtra<Reminder>(Constants.REMINDER_ITEM_KEY)
         }
 
-        if (reminder == null) {
+        // Nothing to show, or a stale launch (e.g. old notification) for an alarm that no
+        // longer rings.
+        if (reminder == null ||
+            AlarmForegroundService.ringingReminderId.value != reminder._id
+        ) {
             finish()
             return
         }
 
-        val settings = SettingsRepository(applicationContext)
-
-        // A null URI means the user picked "Silent" — play no sound at all.
-        val ringtoneUri = settings.resolveRingtoneUri()
-        if (ringtoneUri != null) {
-            // getRingtone() returns null if the stored URI is no longer playable
-            // (e.g. a custom sound that was since deleted); fall back to the default
-            // alarm sound, and skip sound entirely if even that is unavailable.
-            val resolved = RingtoneManager.getRingtone(applicationContext, ringtoneUri)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?.let { RingtoneManager.getRingtone(applicationContext, it) }
-            if (resolved != null) {
-                ringtone = resolved
-                ringtone.setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-                )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    ringtone.isLooping = true
+        // Sound + vibration are owned by AlarmForegroundService; close this screen as soon as
+        // the alarm stops ringing (e.g. dismissed from the notification).
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AlarmForegroundService.ringingReminderId.collect { id ->
+                    if (id != reminder._id) finish()
                 }
-                ringtone.play()
             }
-        }
-
-        if (settings.vibrateEnabled) {
-            startVibration()
         }
 
         setContent {
@@ -124,51 +108,31 @@ class AlarmActivity : ComponentActivity() {
                     AlarmScreen(
                         modifier = Modifier.padding(innerPadding),
                         reminder = reminder,
-                        onDismiss = {
-                            stopAlarm()
-                            finish()
-                        },
-                        onSnooze = {
-                            stopAlarm()
-                            finish()
-                        })
+                        onDismiss = { dismissAlarm() },
+                        onSnooze = { dismissAlarm() })
                 }
             }
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        stopAlarm()
+    private fun dismissAlarm() {
+        startService(AlarmForegroundService.dismissIntent(this))
+        finish()
     }
 
-    private fun startVibration() {
-        val vib = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+    /** Lets the ringing screen appear on top of the lock screen and wake the display. */
+    private fun showOverLockScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
         } else {
             @Suppress("DEPRECATION")
-            getSystemService(VIBRATOR_SERVICE) as Vibrator
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
         }
-        if (!vib.hasVibrator()) return
-        vibrator = vib
-
-        // Repeating wait/buzz/wait pattern, looping from index 0.
-        val effect = VibrationEffect.createWaveform(longArrayOf(0, 800, 600), 0)
-
-        // Tag the vibration as an alarm so it isn't suppressed by the device's
-        // ringer mode (a plain vibrate() is treated like a notification buzz).
-        val attributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-
-        @Suppress("DEPRECATION")
-        vib.vibrate(effect, attributes)
-    }
-
-    private fun stopAlarm() {
-        if (::ringtone.isInitialized && ringtone.isPlaying) ringtone.stop()
-        vibrator?.cancel()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }
 

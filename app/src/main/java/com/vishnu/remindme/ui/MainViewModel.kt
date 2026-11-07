@@ -76,6 +76,7 @@ class MainViewModel @Inject constructor(
 
                 reminder.recurrencePattern != null ->
                     AlarmUtils.rescheduleAlarm(context = context, reminder = reminder)
+                        ?.let { update(it) }
             }
         }
     }
